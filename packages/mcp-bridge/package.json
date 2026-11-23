@@ -1,1 +1,16 @@
-{"name":"@vc-figma/mcp-bridge","version":"0.1.0","private":true}
+{
+  "name": "@vc-figma/mcp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.cjs",
+  "scripts": {
+    "build": "node --check index.cjs",
+    "dev": "node index.cjs",
+    "test": "node --test bridge.test.cjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@vc-figma/protocol": "0.1.0",
+    "ws": "8.23.0"
+  }
+}
