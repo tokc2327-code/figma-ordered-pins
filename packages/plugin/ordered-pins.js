@@ -195,11 +195,18 @@ const orderedPins = ((figma, protocol) => {
     }
   }
 
+  // badge 上要看得见「评论了什么」:编号 + 指令摘要。全文仍存在 pin 的 pluginData 里。
+  function badgeText(pin) {
+    const instruction = String(pin.instruction || '').replace(/\s+/g, ' ').trim();
+    const excerpt = instruction.length > 14 ? instruction.slice(0, 14) + '…' : instruction;
+    return '#' + pin.order + (excerpt ? ' · ' + excerpt : '') + labels[pin.status];
+  }
+
   function editMarker(marker, label, pin, set) {
     const state = pin.status;
     set(marker, 'fills', [paint(colors[state])]);
     set(label, 'fills', [paint(state === 'pending' ? '#111827' : '#FFFFFF')]);
-    set(label, 'characters', '#' + pin.order + labels[state]);
+    set(label, 'characters', badgeText(pin));
   }
 
   function transaction(operation) {
@@ -291,7 +298,7 @@ const orderedPins = ((figma, protocol) => {
         delete next.lastError;
         if (payload.status === 'failed' && payload.note !== undefined) next.lastError = payload.note;
         editMarker(marker, label, next, set);
-        if (label.characters !== '#' + next.order + labels[next.status]
+        if (label.characters !== badgeText(next)
           || colorHex(firstSolid(marker.fills)) !== colors[next.status]) {
           fail('WRITE_FAILED', '标注颜色或编号回读异常。');
         }
@@ -345,7 +352,7 @@ const orderedPins = ((figma, protocol) => {
       let marker;
       change(() => { marker = figma.createFrame(); });
       marker.name = '#' + order;
-      marker.resize(60, 24);
+      marker.resize(200, 24);
       marker.cornerRadius = 12;
       layer.appendChild(marker);
       marker.x = fallbackBounds.x - layer.absoluteTransform[0][2] - 30;
@@ -360,6 +367,9 @@ const orderedPins = ((figma, protocol) => {
       marker.appendChild(label);
       label.fontName = badgeFont;
       label.fontSize = 13;
+      label.textAutoResize = 'TRUNCATE';
+      label.textTruncation = 'ENDING';
+      label.resize(184, 16);
       label.x = 8;
       label.y = 4;
       label.setPluginData(labelKey, '1');

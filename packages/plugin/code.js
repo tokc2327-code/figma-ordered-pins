@@ -223,8 +223,14 @@ figma.ui.onmessage = (message) => {
     });
   } else if (message.type === 'ordered-pin-add') {
     return orderedPins.add(message.instruction).then(
-      (pin) => figma.ui.postMessage({ type: 'ordered-pin-added', pin }),
-      (error) => figma.ui.postMessage({ type: 'ordered-pin-add-error', message: errorMessage(error) }),
+      (pin) => {
+        figma.notify('已添加 #' + pin.order);
+        figma.ui.postMessage({ type: 'ordered-pin-added', pin });
+      },
+      (error) => {
+        figma.notify('添加标注失败：' + errorMessage(error));
+        figma.ui.postMessage({ type: 'ordered-pin-add-error', message: errorMessage(error) });
+      },
     );
   }
 };

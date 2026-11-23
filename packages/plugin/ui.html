@@ -215,6 +215,7 @@
       <div class="sync-actions">
         <button id="bridge-connect" type="button">连接</button>
         <span id="bridge-status" role="status">未连接</span>
+        <span id="bridge-debug" role="status"></span>
       </div>
     </section>
 
@@ -550,8 +551,13 @@
       const bridgeToken = document.getElementById("bridge-token");
       const bridgeConnect = document.getElementById("bridge-connect");
       const bridgeStatus = document.getElementById("bridge-status");
+      const bridgeDebug = document.getElementById("bridge-debug");
       let bridgeSocket;
       let pendingPin = false;
+
+      function note(text) {
+        bridgeDebug.textContent = text;
+      }
 
       pinForm.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -573,13 +579,36 @@
           bridgeStatus.textContent = "请输入有效的本地桥接令牌。";
           return;
         }
-        const socket = new WebSocket("ws://127.0.0.1:17349/?token=" + token);
-        bridgeSocket = socket;
+        // 必须用 localhost:Figma 的 networkAccess 白名单里只登记了 http://localhost:17349,
+        // 裸 IP(127.0.0.1)不是合法条目;桥接那边同时放行 localhost 与 127.0.0.1 的 Host。
+        const url = "ws://localhost:17349/?token=" + token;
         bridgeStatus.textContent = "正在连接…";
         bridgeConnect.textContent = "断开";
+        // 顺手用一次 http 请求探一下本机端口通不通:能拿回状态码(桥接对非 ws 请求回 403)就说明
+        // 沙箱放行、桥接在听;fetch 直接抛错说明被拦/没起。结果写进小字,不用开 DevTools。
+        if (typeof fetch === "function") {
+          fetch("http://localhost:17349/probe").then(
+            (response) => { note("http 探针 " + response.status); },
+            (error) => { note("http 探针失败：" + (error && error.message ? error.message : error)); },
+          );
+        }
+        let socket;
+        try {
+          socket = new WebSocket(url);
+        } catch (error) {
+          bridgeStatus.textContent = "无法建立 socket";
+          bridgeConnect.textContent = "连接";
+          note("new WebSocket 抛错：" + (error && error.message ? error.message : error));
+          return;
+        }
+        bridgeSocket = socket;
         socket.addEventListener("open", () => {
           bridgeToken.value = "";
           bridgeStatus.textContent = "已连接";
+          note("socket open");
+        });
+        socket.addEventListener("error", () => {
+          note("socket error（握手被拒或被拦截）");
         });
         socket.addEventListener("message", (event) => {
           if (bridgeSocket !== socket) return;
@@ -592,12 +621,13 @@
           bridgeSocket = undefined;
           bridgeConnect.textContent = "连接";
           bridgeStatus.textContent = event.wasClean ? "已断开" : "连接失败，请确认本地桥接已启动且令牌正确。";
+          note("socket close code=" + event.code + " reason=" + (event.reason || "-"));
         });
       });
 
       window.addEventListener("message", (event) => {
-        if (event.source !== parent) return;
-        const message = event.data?.pluginMessage;
+        const message = event.data && event.data.pluginMessage;
+        if (!message) return;
         if (message?.type === "ordered-pin-result" && bridgeSocket?.readyState === WebSocket.OPEN) {
           bridgeSocket.send(JSON.stringify(message.result));
         } else if (message?.type === "ordered-pin-added") {

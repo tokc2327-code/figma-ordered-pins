@@ -252,7 +252,9 @@ test('manifest 指向实际入口，声明网络权限且 UI 脚本语法有效'
   assert.equal(manifest.documentAccess, 'dynamic-page');
   assert.equal(manifest.enablePrivatePluginApi, true);
   assert.deepEqual(manifest.networkAccess.allowedDomains, ['https://vcollab.tokc2327.workers.dev']);
-  assert.deepEqual(manifest.networkAccess.devAllowedDomains, ['http://localhost:5173', 'ws://127.0.0.1:17349']);
+  // 白名单按 scheme 匹配：http:// 那条只管 fetch，面板连 ws:// 要单独登记一条 ws://。
+  // 桥接监听 127.0.0.1，但 Host 头是 localhost:17349，桥接两种 Host 都放行。
+  assert.deepEqual(manifest.networkAccess.devAllowedDomains, ['http://localhost:5173', 'http://localhost:17349', 'ws://localhost:17349']);
   assert.ok(readFileSync(join(directory, manifest.main), 'utf8'));
   const currentUiSource = readFileSync(join(directory, 'ui.html'), 'utf8');
   const script = currentUiSource.match(/<script>([\s\S]*?)<\/script>/)?.[1];

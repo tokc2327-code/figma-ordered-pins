@@ -9,7 +9,7 @@
   "enablePrivatePluginApi": true,
   "networkAccess": {
     "allowedDomains": ["https://vcollab.tokc2327.workers.dev"],
-    "devAllowedDomains": ["http://localhost:5173", "ws://127.0.0.1:17349"],
+    "devAllowedDomains": ["http://localhost:5173", "http://localhost:17349", "ws://localhost:17349"],
     "reasoning": "把批注发送到 Visual collaboration 房间服务器，并连接本地有序标注桥接"
   }
 }

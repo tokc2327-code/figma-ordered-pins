@@ -35,6 +35,15 @@ test('loopback upgrade requires a valid token and permits one active panel', asy
   assert.equal(next.readyState, WebSocket.OPEN);
 });
 
+test('panel may reach the bridge through the localhost hostname, as the plugin panel does', async (t) => {
+  const bridge = await makeBridge(t);
+  const socket = new WebSocket('ws://localhost:' + bridge.port + '/?token=' + token);
+  await once(socket, 'open');
+  const closed = once(socket, 'close');
+  socket.close();
+  await closed;
+});
+
 test('loopback WebSocket correlates out-of-order responses by commandId', async (t) => {
   const bridge = await makeBridge(t);
   const socket = await connect(bridge.port);

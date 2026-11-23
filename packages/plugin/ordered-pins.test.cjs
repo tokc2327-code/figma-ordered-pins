@@ -70,7 +70,7 @@ function fixture() {
   const unrelated = make('RECTANGLE', page);
   const figma = {
     mixed, currentPage: page, root: { name: 'Mock' },
-    showUI() {}, on() {},
+    showUI() {}, on() {}, notify() {},
     ui: { postMessage(message) { messages.push(message); } },
     async getNodeByIdAsync(id) { return nodes.get(id); },
     async loadFontAsync(font) { fontLoads.push(font); },
@@ -198,12 +198,13 @@ test('状态持久化，完成状态同步为绿色和勾号，返回剩余 pend
   const { pin } = await f.add(f.frame);
   await f.add(f.text);
   let result = await f.command('update_pin_status', { pinId: pin.pinId, status: 'failed', note: '稍后重试' }, pin);
+  assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(result.data.pin.lastError, '稍后重试');
   result = await f.command('update_pin_status', { pinId: pin.pinId, status: 'done' }, result.data.pin);
   assert.equal(result.data.pin.lastError, undefined);
   assert.equal(result.data.pendingCount, 1);
   const marker = f.nodes.get(pin.pinNodeId);
-  assert.equal(marker.children[0].characters, '#1 ✓');
+  assert.equal(marker.children[0].characters, '#1 · 调整图层 ✓');
   assert.equal(Math.round(marker.fills[0].color.g * 255), 128);
   const read = await f.command('get_ordered_pins', { statusFilter: ['done'] });
   assert.deepEqual(read.data.map((row) => row.pin.version), [3]);
@@ -265,7 +266,7 @@ test('插件面板把桥接命令和回执双向透传，并提交本地落点',
   const tokenField = elements.get('bridge-token');
   tokenField.value = 'a'.repeat(64);
   elements.get('bridge-connect').click();
-  assert.match(socket.url, /^ws:\/\/127\.0\.0\.1:17349\//);
+  assert.match(socket.url, /^ws:\/\/localhost:17349\//);
   socket.readyState = TestSocket.OPEN;
   socket.listeners.open();
   assert.equal(tokenField.value, '');
@@ -276,9 +277,8 @@ test('插件面板把桥接命令和回执双向透传，并提交本地落点',
 
   const result = { commandId: '1', ok: true, data: [] };
   const event = { data: { pluginMessage: { type: 'ordered-pin-result', result } } };
-  listeners.message({ ...event, source: {} });
-  assert.deepEqual(received, []);
-  listeners.message({ ...event, source: parent });
+  // 宿主派发插件消息时不一定带 source（线上实测 source 不是 parent），所以不再按 source 过滤。
+  listeners.message(event);
   assert.deepEqual(received, [result]);
 
   elements.get('pin-instruction').value = '改标题';

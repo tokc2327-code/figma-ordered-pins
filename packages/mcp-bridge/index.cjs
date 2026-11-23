@@ -7,12 +7,23 @@ const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontext
 const { commandTypes, toolInputSchema, isCommandEnvelope, isCommandResult } = require('@vc-figma/protocol');
 
 const host = '127.0.0.1';
+// Figma 的 manifest networkAccess 只认 localhost 这种主机名(裸 IP 不行),所以面板里连的是
+// ws://localhost:17349 —— 但服务只监听 127.0.0.1,Host 头会是 localhost:port。两个都放行,
+// 仍然只接受回环地址上的连接。
+const hostNames = ['127.0.0.1', 'localhost'];
 const defaultPort = 17349;
 
-async function startBridge({ port = defaultPort, token, timeoutMs = 15000 }) {
+async function startBridge({ port = defaultPort, token, timeoutMs = 15000, log = () => {} }) {
   if (!/^[a-f0-9]{64}$/.test(token ?? '')) throw new Error('Bridge token must be 64 lowercase hex digits.');
   const server = createServer((request, response) => {
-    response.writeHead(404).end();
+    // 从 https 页面连本机端口时，浏览器可能先发 CORS / Private-Network-Access 预检。
+    // 把方法、Host 和预检头记下来，才能分清「请求没到本机」和「到了但被拒」。
+    log(`http ${request.method} ${request.url} host=${request.headers.host ?? '-'}`
+      + (request.headers['access-control-request-private-network'] ? ' pna=1' : ''));
+    response.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Private-Network': 'true',
+    }).end();
   });
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
   const pending = new Map();
@@ -21,16 +32,18 @@ async function startBridge({ port = defaultPort, token, timeoutMs = 15000 }) {
   server.on('upgrade', (request, socket, head) => {
     const address = server.address();
     const expectedHost = host + ':' + address.port;
+    const allowedHosts = new Set(hostNames.map((name) => name + ':' + address.port));
     let supplied;
     try {
       const url = new URL(request.url, 'http://' + expectedHost);
-      if (url.host === expectedHost && url.pathname === '/') supplied = url.searchParams.get('token');
+      if (allowedHosts.has(url.host) && url.pathname === '/') supplied = url.searchParams.get('token');
     } catch {
       // The authentication check handles malformed request targets.
     }
-    const valid = request.headers.host === expectedHost && /^[a-f0-9]{64}$/.test(supplied ?? '')
+    const valid = allowedHosts.has(request.headers.host) && /^[a-f0-9]{64}$/.test(supplied ?? '')
       && timingSafeEqual(Buffer.from(supplied, 'hex'), Buffer.from(token, 'hex'));
     if (!valid || peer) {
+      log(`upgrade rejected host=${request.headers.host ?? '-'} validToken=${valid} peer=${Boolean(peer)}`);
       socket.end('HTTP/1.1 ' + (valid ? '409 Conflict' : '403 Forbidden') + '\r\nConnection: close\r\n\r\n');
       return;
     }
