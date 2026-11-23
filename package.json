@@ -1,0 +1,20 @@
+{
+  "name": "figma-ordered-pins-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drop ordered pins on Figma layers so AI agents can read low-noise context, edit the canvas step by step, and verify every change.",
+  "license": "MIT",
+  "engines": { "node": ">=20.0.0", "npm": ">=10.0.0" },
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "test:plugin": "npm test --workspace=packages/plugin",
+    "build": "npm run build --workspaces --if-present",
+    "build:plugin": "npm run build --workspace=packages/plugin",
+    "build:bridge": "npm run build --workspace=packages/mcp-bridge",
+    "dev:bridge": "npm run dev --workspace=packages/mcp-bridge",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "repository": { "type": "git", "url": "https://github.com/tokc2327-code/figma-ordered-pins.git" },
+  "keywords": ["figma-plugin","mcp","ai-agent","visual-collaboration","design-automation"]
+}
