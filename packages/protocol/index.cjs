@@ -123,7 +123,9 @@ function isCommandResult(value, type) {
       required.push('newVersion');
     }
     if (!matches(value, object(properties, required))) return false;
-    if (type === 'update_pin_status') return value.newVersion === value.data.pin.version;
+    if (type === 'update_pin_status') {
+      return isCommentPin(value.data.pin) && value.newVersion === value.data.pin.version;
+    }
     return type !== 'get_ordered_pins' || value.data.every(({ pin, orphaned, context }) =>
       isCommentPin(pin) && !(orphaned && context));
   }

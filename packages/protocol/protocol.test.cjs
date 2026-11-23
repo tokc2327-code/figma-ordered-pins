@@ -54,4 +54,6 @@ test('validates orphan rows and status result version', () => {
     data: [{ pin, orphaned: true, context: node }] }, read.type), false);
   assert.equal(isCommandResult({ commandId: 'req', ok: true, newVersion: 2,
     data: { pin, pendingCount: 1 } }, 'update_pin_status'), false);
+  assert.equal(isCommandResult({ commandId: 'req', ok: true, newVersion: 1,
+    data: { pin: { ...pin, lastError: 'unexpected' }, pendingCount: 1 } }, 'update_pin_status'), false);
 });
