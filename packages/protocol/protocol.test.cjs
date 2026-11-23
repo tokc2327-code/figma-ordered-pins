@@ -57,3 +57,19 @@ test('validates orphan rows and status result version', () => {
   assert.equal(isCommandResult({ commandId: 'req', ok: true, newVersion: 1,
     data: { pin: { ...pin, lastError: 'unexpected' }, pendingCount: 1 } }, 'update_pin_status'), false);
 });
+
+test('add_pin 不带并发字段，回执是新建的 pin 本身', () => {
+  const add = { commandId: 'req', participantId: 'agent:test', type: 'add_pin',
+    payload: { instruction: '改标题' } };
+  assert.equal(isCommandEnvelope(add), true);
+  assert.equal(isCommandEnvelope({ ...add, payload: { instruction: '改标题', nodeId: '1:2' } }), true);
+  // 打点不是修改既有标注：带 pinId / expectedVersion 就不合法
+  assert.equal(isCommandEnvelope({ ...add, pinId: 'p1', expectedVersion: 1 }), false);
+  assert.equal(isCommandEnvelope({ ...add, payload: {} }), false);
+  assert.equal(isCommandEnvelope({ ...add, payload: { instruction: '  ' } }), false);
+
+  assert.equal(isCommandResult({ commandId: 'req', ok: true, data: pin }, 'add_pin'), true);
+  assert.equal(isCommandResult({ commandId: 'req', ok: true, data: pin, newVersion: 1 }, 'add_pin'), false);
+  assert.equal(isCommandResult({ commandId: 'req', ok: true, data: node }, 'add_pin'), false);
+  assert.equal(isCommandResult({ commandId: 'req', ok: true, data: { ...pin, status: 'odd' } }, 'add_pin'), false);
+});

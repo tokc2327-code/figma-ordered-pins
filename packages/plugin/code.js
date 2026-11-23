@@ -10,6 +10,13 @@ function errorMessage(error) {
   return (error && error.message) || String(error);
 }
 
+// 本地桥接令牌:64 位小写十六进制。存 Figma 的 clientStorage,面板打开即自动连接。
+const bridgeTokenKey = 'vc-bridge-token';
+
+function validToken(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null;
+}
+
 function numberOrNull(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -222,7 +229,8 @@ figma.ui.onmessage = (message) => {
       figma.ui.postMessage({ type: 'ordered-pin-result', result });
     });
   } else if (message.type === 'ordered-pin-add') {
-    return orderedPins.add(message.instruction).then(
+    // nodeId 由桥接的 add_pin 命令带过来;面板表单没有 nodeId,仍用当前选区。
+    return orderedPins.add(message.instruction, message.nodeId).then(
       (pin) => {
         figma.notify('已添加 #' + pin.order);
         figma.ui.postMessage({ type: 'ordered-pin-added', pin });
@@ -230,6 +238,21 @@ figma.ui.onmessage = (message) => {
       (error) => {
         figma.notify('添加标注失败：' + errorMessage(error));
         figma.ui.postMessage({ type: 'ordered-pin-add-error', message: errorMessage(error) });
+      },
+    );
+  } else if (message.type === 'bridge-token-get') {
+    // 令牌存在 clientStorage 里,面板打开就自动连,不用每次粘一遍。
+    return figma.clientStorage.getAsync(bridgeTokenKey).then(
+      (token) => { figma.ui.postMessage({ type: 'bridge-token', token: validToken(token) }); },
+      () => { figma.ui.postMessage({ type: 'bridge-token', token: null }); },
+    );
+  } else if (message.type === 'bridge-token-set') {
+    const token = validToken(message.token);
+    return (token ? figma.clientStorage.setAsync(bridgeTokenKey, token)
+      : figma.clientStorage.deleteAsync(bridgeTokenKey)).then(
+      () => { figma.ui.postMessage({ type: 'bridge-token-saved', saved: Boolean(token) }); },
+      (error) => {
+        figma.ui.postMessage({ type: 'bridge-token-saved', saved: false, message: errorMessage(error) });
       },
     );
   }

@@ -78,7 +78,7 @@ test('invalid readback is rejected and a silent peer times out', async (t) => {
   await assert.rejects(bridge.send(command), /did not reply/);
 });
 
-test('real MCP stdio client lists five tools and receives plugin readback through WebSocket', { timeout: 10000 }, async (t) => {
+test('real MCP stdio client lists six tools and receives plugin readback through WebSocket', { timeout: 10000 }, async (t) => {
   const entry = path.join(__dirname, 'index.cjs');
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -108,7 +108,7 @@ test('real MCP stdio client lists five tools and receives plugin readback throug
 
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((tool) => tool.name),
-    ['get_ordered_pins', 'update_text', 'update_style', 'update_layout', 'update_pin_status']);
+    ['get_ordered_pins', 'update_text', 'update_style', 'update_layout', 'update_pin_status', 'add_pin']);
   const participantId = 'agent:bridge-test';
   const read = await client.callTool({ name: command.type, arguments: { participantId, payload: {} } });
   assert.equal(read.structuredContent.ok, true);

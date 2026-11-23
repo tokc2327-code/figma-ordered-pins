@@ -53,9 +53,14 @@ const payloadSchemas = {
     height: { ...number, exclusiveMinimum: 0 }, x: number, y: number, itemSpacing: number,
     padding: object(padding, [], { minProperties: 1 }) }, ['nodeId'], { minProperties: 2 }),
   update_pin_status: object({ pinId: id, status, note: string }, ['pinId', 'status']),
+  // add_pin 只带指令(可选指定目标图层,不给就用当前选区),没有既有的 pinId / expectedVersion。
+  add_pin: object({ instruction: id, nodeId: id }, ['instruction']),
 };
 const commandTypes = Object.keys(payloadSchemas);
+// 这两条命令不是修改既有标注,所以信封里不带 pinId / expectedVersion,回执也不带 newVersion。
+const versionlessTypes = ['get_ordered_pins', 'add_pin'];
 const resultSchemas = {
+  add_pin: pinSchema,
   get_ordered_pins: array(object({
     pin: pinSchema, context: nodeSchema, orphaned: { const: true },
   }, ['pin'])),
@@ -97,7 +102,7 @@ function matches(value, schema) {
 function toolInputSchema(type) {
   const properties = { participantId: id, payload: payloadSchemas[type] };
   const required = ['participantId', 'payload'];
-  if (type !== 'get_ordered_pins') {
+  if (!versionlessTypes.includes(type)) {
     Object.assign(properties, { pinId: id, expectedVersion: version });
     required.push('pinId', 'expectedVersion');
   }
@@ -118,11 +123,12 @@ function isCommandResult(value, type) {
   if (value?.ok === true) {
     const properties = { commandId: id, ok: { const: true }, data: resultSchemas[type] };
     const required = ['commandId', 'ok', 'data'];
-    if (type !== 'get_ordered_pins') {
+    if (!versionlessTypes.includes(type)) {
       properties.newVersion = version;
       required.push('newVersion');
     }
     if (!matches(value, object(properties, required))) return false;
+    if (type === 'add_pin') return isCommentPin(value.data);
     if (type === 'update_pin_status') {
       return isCommentPin(value.data.pin) && value.newVersion === value.data.pin.version;
     }

@@ -251,6 +251,18 @@ const orderedPins = ((figma, protocol) => {
       if (!protocol.isCommandResult(result, type)) fail('WRITE_FAILED', '无法读取有效的标注列表。');
       return result;
     }
+    if (type === 'add_pin') {
+      // agent 走桥接打点时不一定有人在面板上选中东西,所以允许直接给 nodeId;给了就以它为准。
+      const node = payload.nodeId === undefined ? null : await figma.getNodeByIdAsync(payload.nodeId);
+      if (payload.nodeId !== undefined && (!node || node.removed)) {
+        fail('ANCHOR_NOT_FOUND', '找不到 nodeId 指定的图层。');
+      }
+      const target = node || (page.selection.length === 1 ? page.selection[0] : null);
+      const pin = await addPin(page, target, payload.instruction);
+      const result = { commandId, ok: true, data: pin };
+      if (!protocol.isCommandResult(result, type)) fail('WRITE_FAILED', '无法读取有效的新标注。');
+      return result;
+    }
     const entry = pagePins(page).find(({ pin }) => pin.pinId === pinId);
     if (!entry) fail('ANCHOR_NOT_FOUND', '当前页没有该标注。');
     const { marker, pin } = entry;
@@ -435,10 +447,14 @@ const orderedPins = ((figma, protocol) => {
 
   return {
     command,
-    add(instruction) {
-      const page = figma.currentPage;
-      const node = page.selection.length === 1 ? page.selection[0] : null;
-      return enqueue(() => addPin(page, node, instruction));
+    // 面板表单走这里:不传 nodeId 就用当前选区。
+    add(instruction, nodeId) {
+      return enqueue(async () => {
+        const page = figma.currentPage;
+        const node = nodeId ? await figma.getNodeByIdAsync(nodeId) : null;
+        if (nodeId && (!node || node.removed)) fail('ANCHOR_NOT_FOUND', '找不到 nodeId 指定的图层。');
+        return addPin(page, node || (page.selection.length === 1 ? page.selection[0] : null), instruction);
+      });
     },
   };
 })(figma, pinProtocol);

@@ -111,6 +111,7 @@ async function startBridge({ port = defaultPort, token, timeoutMs = 15000, log =
 
 const descriptions = {
   get_ordered_pins: 'Read the current Figma page pins in order, with optional anchored node context.',
+  add_pin: 'Drop a new ordered pin on a layer (nodeId, else the current selection) with an instruction.',
   update_text: 'Edit text on the pinned layer or its direct child and return a verified snapshot.',
   update_style: 'Edit supported visual properties on the pinned layer or its direct child.',
   update_layout: 'Edit supported geometry or Auto Layout properties on the pinned layer or its direct child.',

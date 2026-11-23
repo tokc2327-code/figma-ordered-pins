@@ -569,23 +569,25 @@
         } }, "*");
       });
 
-      bridgeConnect.addEventListener("click", () => {
-        if (bridgeSocket) {
-          bridgeSocket.close();
-          return;
-        }
-        const token = bridgeToken.value.trim();
-        if (!/^[a-f0-9]{64}$/.test(token)) {
-          bridgeStatus.textContent = "请输入有效的本地桥接令牌。";
-          return;
-        }
+      // 令牌会存进 clientStorage(code.js 那边),面板一打开就拿回来自动连,不用每次粘。
+      let storedToken = null;
+      let manualClose = false;
+      let retries = 0;
+
+      function setStatus(text) {
+        bridgeStatus.textContent = text;
+      }
+
+      function connect(token) {
+        if (bridgeSocket) return;
+        manualClose = false;
+        setStatus("正在连接…");
+        bridgeConnect.textContent = "断开";
         // 必须用 localhost:Figma 的 networkAccess 白名单里只登记了 http://localhost:17349,
         // 裸 IP(127.0.0.1)不是合法条目;桥接那边同时放行 localhost 与 127.0.0.1 的 Host。
         const url = "ws://localhost:17349/?token=" + token;
-        bridgeStatus.textContent = "正在连接…";
-        bridgeConnect.textContent = "断开";
-        // 顺手用一次 http 请求探一下本机端口通不通:能拿回状态码(桥接对非 ws 请求回 403)就说明
-        // 沙箱放行、桥接在听;fetch 直接抛错说明被拦/没起。结果写进小字,不用开 DevTools。
+        // 顺手用一次 http 请求探一下本机端口通不通:能拿回状态码就说明沙箱放行、桥接在听;
+        // fetch 直接抛错说明被拦/没起。结果写进小字,不用开 DevTools。
         if (typeof fetch === "function") {
           fetch("http://localhost:17349/probe").then(
             (response) => { note("http 探针 " + response.status); },
@@ -596,16 +598,23 @@
         try {
           socket = new WebSocket(url);
         } catch (error) {
-          bridgeStatus.textContent = "无法建立 socket";
+          setStatus("无法建立 socket");
           bridgeConnect.textContent = "连接";
           note("new WebSocket 抛错：" + (error && error.message ? error.message : error));
           return;
         }
+        let opened = false;
         bridgeSocket = socket;
         socket.addEventListener("open", () => {
+          opened = true;
+          retries = 0;
           bridgeToken.value = "";
-          bridgeStatus.textContent = "已连接";
+          setStatus("已连接");
           note("socket open");
+          if (token !== storedToken) {
+            storedToken = token;
+            parent.postMessage({ pluginMessage: { type: "bridge-token-set", token } }, "*");
+          }
         });
         socket.addEventListener("error", () => {
           note("socket error（握手被拒或被拦截）");
@@ -620,9 +629,36 @@
           if (bridgeSocket !== socket) return;
           bridgeSocket = undefined;
           bridgeConnect.textContent = "连接";
-          bridgeStatus.textContent = event.wasClean ? "已断开" : "连接失败，请确认本地桥接已启动且令牌正确。";
+          setStatus(event.wasClean ? "已断开" : "连接失败，请确认本地桥接已启动且令牌正确。");
           note("socket close code=" + event.code + " reason=" + (event.reason || "-"));
+          // 只有「本来连上过、后来掉了」(桥接重启/换端口)才自动重连;握手就被拒(令牌错)重试也没用。
+          if (opened && !manualClose && typeof setTimeout === "function" && storedToken) {
+            if (retries >= 5) {
+              setStatus("已断开，点「连接」重试。");
+              return;
+            }
+            retries += 1;
+            const delay = Math.min(1000 * retries, 5000);
+            setStatus("断开，" + delay / 1000 + " 秒后重连…");
+            setTimeout(() => {
+              if (!bridgeSocket && !manualClose) connect(storedToken);
+            }, delay);
+          }
         });
+      }
+
+      bridgeConnect.addEventListener("click", () => {
+        if (bridgeSocket) {
+          manualClose = true;
+          bridgeSocket.close();
+          return;
+        }
+        const token = bridgeToken.value.trim() || storedToken || "";
+        if (!/^[a-f0-9]{64}$/.test(token)) {
+          setStatus("请输入有效的本地桥接令牌。");
+          return;
+        }
+        connect(token);
       });
 
       window.addEventListener("message", (event) => {
@@ -637,8 +673,17 @@
         } else if (message?.type === "ordered-pin-add-error") {
           pendingPin = false;
           pinStatus.textContent = message.message;
+        } else if (message?.type === "bridge-token") {
+          storedToken = typeof message.token === "string" ? message.token : null;
+          // 有存过的令牌、面板刚打开、输入框还空着 → 直接连,不用点。
+          if (storedToken && !bridgeSocket && !bridgeToken.value.trim()) connect(storedToken);
+        } else if (message?.type === "bridge-token-saved" && !message.saved) {
+          note("令牌没能存进 clientStorage" + (message.message ? "：" + message.message : ""));
         }
       });
+
+      // 打开面板先问主线程要存过的令牌;拿回来就自动连。
+      parent.postMessage({ pluginMessage: { type: "bridge-token-get" } }, "*");
     </script>
   </body>
 </html>

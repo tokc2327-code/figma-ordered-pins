@@ -235,6 +235,30 @@ test('多属性操作中途失败时撤回修改并保留版本', async () => {
   assert.equal(read.data[0].pin.version, 1);
 });
 
+test('agent 走桥接的 add_pin：给 nodeId 打在那层，不给用选区，同一 commandId 幂等', async () => {
+  const f = fixture();
+  const byId = await f.command('add_pin', { instruction: '把这层改成蓝色', nodeId: f.text.id });
+  assert.equal(byId.ok, true);
+  assert.equal(byId.data.anchor.nodeId, f.text.id);
+  assert.equal(byId.data.order, 1);
+  assert.equal(byId.data.status, 'pending');
+  assert.equal(byId.newVersion, undefined);
+
+  // 桥接重发同一条命令（同 commandId）不应再打一个点
+  const replay = await f.command('add_pin', { instruction: '把这层改成蓝色', nodeId: f.text.id },
+    null, { commandId: 'req1' });
+  assert.deepEqual(replay, byId);
+  assert.equal(f.nodes.get(byId.data.pinNodeId).parent.children.length, 1);
+
+  f.page.selection = [f.frame];
+  const fromSelection = await f.command('add_pin', { instruction: '改标题' });
+  assert.equal(fromSelection.data.anchor.nodeId, f.frame.id);
+  assert.equal(fromSelection.data.order, 2);
+
+  const missing = await f.command('add_pin', { instruction: '改标题', nodeId: '9:9' });
+  assert.equal(missing.error.code, 'ANCHOR_NOT_FOUND');
+});
+
 test('插件面板把桥接命令和回执双向透传，并提交本地落点', () => {
   const scripts = [...readFileSync(path.join(__dirname, 'ui.html'), 'utf8')
     .matchAll(/<script>([\s\S]*?)<\/script>/g)];
@@ -263,6 +287,8 @@ test('插件面板把桥接命令和回执双向透传，并提交本地落点',
   const parent = { postMessage(message) { posted.push(structuredClone(message.pluginMessage)); } };
   const window = { addEventListener(name, listener) { listeners[name] = listener; } };
   vm.runInNewContext(scripts[1][1], { document, parent, window, WebSocket: TestSocket });
+  // 面板一打开就问主线程要存过的令牌（拿回来会自动连）
+  assert.deepEqual(posted.at(-1), { type: 'bridge-token-get' });
   const tokenField = elements.get('bridge-token');
   tokenField.value = 'a'.repeat(64);
   elements.get('bridge-connect').click();
@@ -271,6 +297,9 @@ test('插件面板把桥接命令和回执双向透传，并提交本地落点',
   socket.listeners.open();
   assert.equal(tokenField.value, '');
   assert.equal(elements.get('bridge-status').textContent, '已连接');
+  // 连上后令牌落进 clientStorage，下次打开面板就不用再粘
+  assert.deepEqual(posted.find((message) => message.type === 'bridge-token-set'),
+    { type: 'bridge-token-set', token: 'a'.repeat(64) });
   const envelope = { type: 'get_ordered_pins', payload: {} };
   socket.listeners.message({ data: JSON.stringify(envelope) });
   assert.deepEqual(posted.pop(), { type: 'ordered-pin-command', envelope });
