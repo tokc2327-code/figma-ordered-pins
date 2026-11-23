@@ -246,13 +246,13 @@ test('深度上限保留边界节点、省略其子节点并明确标记', () =>
 test('manifest 指向实际入口，声明网络权限且 UI 脚本语法有效', () => {
   const manifest = JSON.parse(readFileSync(join(directory, 'manifest.json'), 'utf8'));
   assert.equal(manifest.api, '1.0.0');
-  assert.equal(manifest.main, 'code.js');
+  assert.equal(manifest.main, 'dist/code.js');
   assert.equal(manifest.ui, 'ui.html');
   assert.deepEqual(manifest.editorType, ['figma']);
   assert.equal(manifest.documentAccess, 'dynamic-page');
   assert.equal(manifest.enablePrivatePluginApi, true);
   assert.deepEqual(manifest.networkAccess.allowedDomains, ['https://vcollab.tokc2327.workers.dev']);
-  assert.deepEqual(manifest.networkAccess.devAllowedDomains, ['http://localhost:5173']);
+  assert.deepEqual(manifest.networkAccess.devAllowedDomains, ['http://localhost:5173', 'ws://127.0.0.1:17349']);
   assert.ok(readFileSync(join(directory, manifest.main), 'utf8'));
   const currentUiSource = readFileSync(join(directory, 'ui.html'), 'utf8');
   const script = currentUiSource.match(/<script>([\s\S]*?)<\/script>/)?.[1];

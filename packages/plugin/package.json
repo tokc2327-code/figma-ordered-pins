@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "check": "node --check code.js && node --check code.test.cjs",
-    "test": "node --test code.test.cjs"
+    "build": "node build.cjs",
+    "check": "node --check code.js && node --check ordered-pins.js",
+    "test": "npm run build && node --test *.test.cjs"
   }
 }

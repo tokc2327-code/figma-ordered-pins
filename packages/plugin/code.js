@@ -217,6 +217,15 @@ figma.ui.onmessage = (message) => {
   } else if (message.type === 'export-selection') {
     postExport('selection');
     postSelectionTarget();
+  } else if (message.type === 'ordered-pin-command') {
+    return orderedPins.command(message.envelope).then((result) => {
+      figma.ui.postMessage({ type: 'ordered-pin-result', result });
+    });
+  } else if (message.type === 'ordered-pin-add') {
+    return orderedPins.add(message.instruction).then(
+      (pin) => figma.ui.postMessage({ type: 'ordered-pin-added', pin }),
+      (error) => figma.ui.postMessage({ type: 'ordered-pin-add-error', message: errorMessage(error) }),
+    );
   }
 };
 

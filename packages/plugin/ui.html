@@ -197,6 +197,27 @@
       </div>
     </header>
 
+    <section class="sync-panel" aria-label="有序标注">
+      <form id="pin-form">
+        <div class="form-row">
+          <label for="pin-instruction">有序标注</label>
+          <input id="pin-instruction" type="text" placeholder="选中一个图层，输入修改指令" required />
+        </div>
+        <div class="sync-actions">
+          <button type="submit" class="primary">添加标注</button>
+          <span id="pin-status" role="status"></span>
+        </div>
+      </form>
+      <div class="form-row">
+        <label for="bridge-token">本地桥接</label>
+        <input id="bridge-token" type="password" autocomplete="off" placeholder="粘贴本地桥接令牌" />
+      </div>
+      <div class="sync-actions">
+        <button id="bridge-connect" type="button">连接</button>
+        <span id="bridge-status" role="status">未连接</span>
+      </div>
+    </section>
+
     <section class="sync-panel" aria-label="发送批注到房间">
       <div class="sync-title">
         <span>发送批注到房间</span>
@@ -521,6 +542,73 @@
           message.summary.truncated,
         );
       };
+    </script>
+    <script>
+      const pinForm = document.getElementById("pin-form");
+      const pinInstruction = document.getElementById("pin-instruction");
+      const pinStatus = document.getElementById("pin-status");
+      const bridgeToken = document.getElementById("bridge-token");
+      const bridgeConnect = document.getElementById("bridge-connect");
+      const bridgeStatus = document.getElementById("bridge-status");
+      let bridgeSocket;
+      let pendingPin = false;
+
+      pinForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (pendingPin || !pinInstruction.value.trim()) return;
+        pendingPin = true;
+        pinStatus.textContent = "正在添加标注…";
+        parent.postMessage({ pluginMessage: {
+          type: "ordered-pin-add", instruction: pinInstruction.value,
+        } }, "*");
+      });
+
+      bridgeConnect.addEventListener("click", () => {
+        if (bridgeSocket) {
+          bridgeSocket.close();
+          return;
+        }
+        const token = bridgeToken.value.trim();
+        if (!/^[a-f0-9]{64}$/.test(token)) {
+          bridgeStatus.textContent = "请输入有效的本地桥接令牌。";
+          return;
+        }
+        const socket = new WebSocket("ws://127.0.0.1:17349/?token=" + token);
+        bridgeSocket = socket;
+        bridgeStatus.textContent = "正在连接…";
+        bridgeConnect.textContent = "断开";
+        socket.addEventListener("open", () => {
+          bridgeToken.value = "";
+          bridgeStatus.textContent = "已连接";
+        });
+        socket.addEventListener("message", (event) => {
+          if (bridgeSocket !== socket) return;
+          let envelope;
+          try { envelope = JSON.parse(event.data); } catch { return; }
+          parent.postMessage({ pluginMessage: { type: "ordered-pin-command", envelope } }, "*");
+        });
+        socket.addEventListener("close", (event) => {
+          if (bridgeSocket !== socket) return;
+          bridgeSocket = undefined;
+          bridgeConnect.textContent = "连接";
+          bridgeStatus.textContent = event.wasClean ? "已断开" : "连接失败，请确认本地桥接已启动且令牌正确。";
+        });
+      });
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== parent) return;
+        const message = event.data?.pluginMessage;
+        if (message?.type === "ordered-pin-result" && bridgeSocket?.readyState === WebSocket.OPEN) {
+          bridgeSocket.send(JSON.stringify(message.result));
+        } else if (message?.type === "ordered-pin-added") {
+          pendingPin = false;
+          pinInstruction.value = "";
+          pinStatus.textContent = "已添加 #" + message.pin.order;
+        } else if (message?.type === "ordered-pin-add-error") {
+          pendingPin = false;
+          pinStatus.textContent = message.message;
+        }
+      });
     </script>
   </body>
 </html>
