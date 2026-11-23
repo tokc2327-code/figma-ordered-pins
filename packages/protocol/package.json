@@ -1,1 +1,8 @@
-{"name":"@vc-figma/protocol","version":"0.1.0","private":true}
+{
+  "name": "@vc-figma/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.cjs",
+  "types": "index.d.cts",
+  "scripts": { "test": "node --test protocol.test.cjs" }
+}
