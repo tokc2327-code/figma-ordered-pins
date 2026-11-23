@@ -1,0 +1,15 @@
+{
+  "name": "Visual collaboration 图层读取（开发）",
+  "id": "visual-collaboration-layer-reader-v1",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "enablePrivatePluginApi": true,
+  "networkAccess": {
+    "allowedDomains": ["https://vcollab.tokc2327.workers.dev"],
+    "devAllowedDomains": ["http://localhost:5173"],
+    "reasoning": "把批注发送到 Visual collaboration 房间服务器"
+  }
+}

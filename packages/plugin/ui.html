@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visual collaboration 图层读取与同步</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 12px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        height: 100vh;
+        margin: 0;
+        padding: 14px;
+        color: var(--figma-color-text, #181814);
+        background: var(--figma-color-bg, #fff);
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .actions {
+        display: flex;
+        flex-shrink: 0;
+        gap: 6px;
+      }
+
+      button {
+        min-height: 28px;
+        padding: 0 10px;
+        border: 1px solid var(--figma-color-border, #d6d6d6);
+        border-radius: 5px;
+        color: var(--figma-color-text, #181814);
+        background: var(--figma-color-bg-secondary, #f5f5f5);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--figma-color-bg-brand, #9747ff);
+        color: var(--figma-color-text-onbrand, #fff);
+        background: var(--figma-color-bg-brand, #9747ff);
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible {
+        outline: 2px solid var(--figma-color-border-selected, #0d99ff);
+        outline-offset: 1px;
+      }
+
+      /* 发送到房间面板 */
+      .sync-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid var(--figma-color-border, #d6d6d6);
+        border-radius: 6px;
+        background: var(--figma-color-bg-secondary, #fafafa);
+      }
+
+      .sync-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .form-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .form-row label,
+      .form-row .form-label {
+        width: 52px;
+        flex-shrink: 0;
+        font-size: 11px;
+        color: var(--figma-color-text-secondary, #707070);
+      }
+
+      input[type="text"] {
+        flex: 1;
+        min-height: 28px;
+        padding: 0 8px;
+        border: 1px solid var(--figma-color-border, #d6d6d6);
+        border-radius: 4px;
+        color: var(--figma-color-text, #181814);
+        background: var(--figma-color-bg, #fff);
+        font: inherit;
+      }
+
+      .target-badge {
+        flex: 1;
+        padding: 5px 8px;
+        border-radius: 4px;
+        background: var(--figma-color-bg, #fff);
+        border: 1px dashed var(--figma-color-border, #d6d6d6);
+        color: var(--figma-color-text-secondary, #707070);
+        font-size: 11px;
+        line-height: 1.4;
+        word-break: break-all;
+      }
+
+      .target-badge.has-target {
+        border-style: solid;
+        border-color: var(--figma-color-border-selected, #0d99ff);
+        color: var(--figma-color-text, #181814);
+      }
+
+      .sync-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 2px;
+      }
+
+      #send-status {
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--figma-color-text-secondary, #707070);
+      }
+
+      #send-status.success {
+        color: #0b8a36;
+      }
+
+      #send-status.error {
+        color: var(--figma-color-text-danger, #dc341e);
+      }
+
+      #summary,
+      #notice {
+        color: var(--figma-color-text-secondary, #707070);
+        line-height: 1.45;
+      }
+
+      #notice.warning {
+        color: var(--figma-color-text-danger, #dc341e);
+      }
+
+      textarea {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        resize: none;
+        padding: 10px;
+        border: 1px solid var(--figma-color-border, #d6d6d6);
+        border-radius: 5px;
+        color: var(--figma-color-text, #181814);
+        background: var(--figma-color-bg-secondary, #f5f5f5);
+        font: 11px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        tab-size: 2;
+      }
+
+      footer {
+        color: var(--figma-color-text-secondary, #707070);
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Visual collaboration 图层读取与同步</h1>
+      <div class="actions">
+        <button id="export-page" type="button">读取整页</button>
+        <button id="export-selection" type="button">读取选中</button>
+        <button id="copy" class="primary" type="button" disabled>复制 JSON</button>
+      </div>
+    </header>
+
+    <section class="sync-panel" aria-label="发送批注到房间">
+      <div class="sync-title">
+        <span>发送批注到房间</span>
+      </div>
+      <div class="form-row">
+        <label for="server-input">服务器</label>
+        <input id="server-input" type="text" list="server-options" value="http://localhost:5173" spellcheck="false" />
+        <datalist id="server-options">
+          <option value="http://localhost:5173">本地开发 (http://localhost:5173)</option>
+          <option value="https://vcollab.tokc2327.workers.dev">线上生产 (https://vcollab.tokc2327.workers.dev)</option>
+        </datalist>
+      </div>
+      <div class="form-row">
+        <label for="room-input">房间</label>
+        <input id="room-input" type="text" placeholder="房间 ID 或链接，如 s/abc" spellcheck="false" />
+      </div>
+      <div class="form-row">
+        <span class="form-label">目标图层</span>
+        <div id="target-summary" class="target-badge">未选中图层（在画布中选择图层后自动关联）</div>
+      </div>
+      <div class="form-row">
+        <label for="comment-input">批注</label>
+        <input id="comment-input" type="text" placeholder="输入批注内容…" />
+      </div>
+      <div class="sync-actions">
+        <button id="send-button" class="primary" type="button" disabled>发送到房间</button>
+        <div id="send-status" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <div id="summary" role="status" aria-live="polite">正在读取 figma.currentPage…</div>
+    <div id="notice"></div>
+    <textarea id="output" readonly spellcheck="false" aria-label="导出的图层树 JSON"></textarea>
+    <footer>启动时导出整页；选择变化只更新“目标图层”，点“读取选中”才导出选中子树。关闭面板后插件停止。</footer>
+
+    <script>
+      const output = document.getElementById("output");
+      const summary = document.getElementById("summary");
+      const notice = document.getElementById("notice");
+      const copyButton = document.getElementById("copy");
+      const exportPageButton = document.getElementById("export-page");
+      const exportSelectionButton = document.getElementById("export-selection");
+
+      // 与 manifest 的 networkAccess 保持一致；不在名单内的服务器会被 Figma 拦截。
+      const ALLOWED_SERVERS = ["http://localhost:5173", "https://vcollab.tokc2327.workers.dev"];
+      const SEND_TIMEOUT_MS = 15000;
+      const MAX_ERROR_TEXT = 200;
+
+      const serverInput = document.getElementById("server-input");
+      const roomInput = document.getElementById("room-input");
+      const commentInput = document.getElementById("comment-input");
+      const targetSummary = document.getElementById("target-summary");
+      const sendButton = document.getElementById("send-button");
+      const sendStatus = document.getElementById("send-status");
+
+      let currentJson = "";
+      let currentFigmaTarget = null;
+      let isSending = false;
+      let noticeTimer;
+
+      function setNotice(text, isWarning) {
+        clearTimeout(noticeTimer);
+        notice.textContent = text;
+        notice.classList.toggle("warning", Boolean(isWarning));
+      }
+
+      function setSendStatus(text, isError) {
+        sendStatus.textContent = text;
+        sendStatus.classList.toggle("error", Boolean(isError));
+        sendStatus.classList.toggle("success", Boolean(text && !isError));
+      }
+
+      function parseRoomId(raw) {
+        if (!raw) return "";
+        const trimmed = String(raw).trim();
+        const match = trimmed.match(/(?:^|\/)(?:s|r)\/([a-zA-Z0-9_-]+)/);
+        if (match) return match[1];
+        try {
+          if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            const u = new URL(trimmed);
+            const parts = u.pathname.split("/").filter(Boolean);
+            if (parts.length > 0) return parts[parts.length - 1];
+          }
+        } catch (_) {}
+        return trimmed;
+      }
+
+      function parseRoomOrigin(raw) {
+        const trimmed = String(raw || "").trim();
+        if (!/^https?:\/\//.test(trimmed)) return "";
+        try {
+          return new URL(trimmed).origin;
+        } catch (_) {
+          return "";
+        }
+      }
+
+      function updateSendButtonState() {
+        const roomId = parseRoomId(roomInput.value);
+        const text = (commentInput.value || "").trim();
+        sendButton.disabled = isSending || !roomId || !text;
+      }
+
+      function updateTargetDisplay(target) {
+        currentFigmaTarget = target;
+        if (!target) {
+          targetSummary.textContent = "未选中图层（在画布中选择图层后自动关联）";
+          targetSummary.classList.remove("has-target");
+          return;
+        }
+
+        targetSummary.classList.add("has-target");
+        let desc = "[" + target.type + "] " + target.name;
+        if (target.absoluteBoundingBox) {
+          const w = Math.round(target.absoluteBoundingBox.width || 0);
+          const h = Math.round(target.absoluteBoundingBox.height || 0);
+          desc += " · " + w + "×" + h;
+        }
+        if (target.nodes && target.nodes.length > 1) {
+          desc += " (多选 " + (target.nodesTotal || target.nodes.length) + " 个图层";
+          if (target.nodesTruncated) desc += "，仅附带前 " + target.nodes.length + " 个";
+          desc += ")";
+        }
+        if (!target.fileKey) {
+          desc += " · 无法获取 fileKey，不会附带 Figma 链接";
+        }
+        targetSummary.textContent = desc;
+      }
+
+      roomInput.addEventListener("input", updateSendButtonState);
+      commentInput.addEventListener("input", updateSendButtonState);
+
+      async function sendComment() {
+        const roomId = parseRoomId(roomInput.value);
+        const text = (commentInput.value || "").trim();
+        let server = (serverInput.value || "http://localhost:5173").trim().replace(/\/+$/, "");
+
+        if (!roomId) {
+          setSendStatus("请输入有效的房间 ID 或链接", true);
+          return;
+        }
+        if (!text) {
+          setSendStatus("请输入批注内容", true);
+          return;
+        }
+
+        // 房间链接自带服务器时，以链接为准，避免把线上房间的批注静默发到 localhost。
+        const roomOrigin = parseRoomOrigin(roomInput.value);
+        if (roomOrigin && roomOrigin !== server) {
+          if (!ALLOWED_SERVERS.includes(roomOrigin)) {
+            setSendStatus("房间链接的服务器 " + roomOrigin + " 不在插件允许的网络域名内", true);
+            return;
+          }
+          server = roomOrigin;
+          serverInput.value = roomOrigin;
+        }
+        if (!ALLOWED_SERVERS.includes(server)) {
+          setSendStatus("服务器 " + server + " 不在插件允许的网络域名内，请从下拉选项中选择", true);
+          return;
+        }
+
+        isSending = true;
+        updateSendButtonState();
+        setSendStatus("正在发送批注…", false);
+
+        const target = currentFigmaTarget;
+        const bbox = target && target.absoluteBoundingBox;
+        const x = bbox && typeof bbox.x === "number" ? bbox.x : 0;
+        const y = bbox && typeof bbox.y === "number" ? bbox.y : 0;
+
+        const op = {
+          id: "figma_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+          tool: "comment",
+          num: 1,
+          color: "#f43f5e",
+          lineWidth: 2,
+          text: text,
+          x: x,
+          y: y,
+          ts: Date.now(),
+          author: "Figma Plugin",
+          figmaTarget: target,
+        };
+
+        let controller = null;
+        let timeoutId;
+        let timedOut = false;
+        if (typeof AbortController === "function") {
+          controller = new AbortController();
+          timeoutId = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+          }, SEND_TIMEOUT_MS);
+        }
+
+        try {
+          const url = server + "/api/" + encodeURIComponent(roomId);
+          const init = {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify([op]),
+          };
+          if (controller) init.signal = controller.signal;
+          const res = await fetch(url, init);
+
+          if (!res.ok) {
+            let errText = "";
+            try {
+              errText = await res.text();
+            } catch (_) {}
+            errText = String(errText || res.statusText || "").slice(0, MAX_ERROR_TEXT);
+            setSendStatus("发送失败 (" + res.status + "): " + errText, true);
+          } else {
+            setSendStatus(
+              "批注已成功发送至房间 " + roomId + (target ? "" : "（未关联图层，批注位置为 0,0）"),
+              false,
+            );
+            commentInput.value = "";
+          }
+        } catch (error) {
+          if (timedOut) {
+            setSendStatus("发送超时（" + SEND_TIMEOUT_MS / 1000 + " 秒），请检查服务器或网络后重试", true);
+          } else {
+            setSendStatus("网络请求失败: " + ((error && error.message) || String(error)), true);
+          }
+        } finally {
+          clearTimeout(timeoutId);
+          isSending = false;
+          updateSendButtonState();
+        }
+      }
+
+      sendButton.addEventListener("click", sendComment);
+
+      function selectOutput() {
+        output.focus();
+        output.select();
+        output.setSelectionRange(0, output.value.length);
+      }
+
+      async function copyJson() {
+        if (!currentJson) return;
+
+        let copied = false;
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(currentJson);
+            copied = true;
+          }
+        } catch (_) {
+          // Figma 内嵌页面可能禁用 Clipboard API，下面回退到选区复制。
+        }
+
+        if (!copied) {
+          selectOutput();
+          try {
+            copied = document.execCommand("copy");
+          } catch (_) {
+            copied = false;
+          }
+        }
+
+        if (copied) {
+          setNotice("已复制完整 JSON。", false);
+          noticeTimer = setTimeout(() => setNotice("", false), 2500);
+        } else {
+          setNotice("自动复制失败；JSON 已全选，请按 Ctrl/Cmd+C。", true);
+        }
+      }
+
+      copyButton.addEventListener("click", copyJson);
+      exportPageButton.addEventListener("click", () => {
+        summary.textContent = "正在读取 figma.currentPage…";
+        setNotice("", false);
+        parent.postMessage({ pluginMessage: { type: "export-page" } }, "*");
+      });
+
+      exportSelectionButton.addEventListener("click", () => {
+        summary.textContent = "正在读取选中图层…";
+        setNotice("", false);
+        parent.postMessage({ pluginMessage: { type: "export-selection" } }, "*");
+      });
+
+      window.onmessage = (event) => {
+        const message = event.data && event.data.pluginMessage;
+        if (!message) return;
+
+        if (message.type === "export-error") {
+          summary.textContent = "导出失败";
+          setNotice(message.message || "未知错误", true);
+          return;
+        }
+
+        if (message.type === "selection-target") {
+          updateTargetDisplay(message.figmaTarget);
+          return;
+        }
+
+        if (message.type === "selection-target-error") {
+          setNotice("图层目标读取失败: " + (message.message || "未知错误"), true);
+          return;
+        }
+
+        if (message.type !== "layer-tree") return;
+
+        currentJson = message.json;
+        output.value = currentJson;
+        copyButton.disabled = false;
+        const scope = message.summary.scope === "selection" ? "选中子树" : "整页";
+        summary.textContent =
+          scope +
+          " · " +
+          message.summary.nodeCount.toLocaleString() +
+          " 个节点 · " +
+          new Date().toLocaleTimeString();
+        setNotice(
+          message.summary.truncated
+            ? "已达到节点数或深度上限，当前 JSON 不完整；详见 truncation 与节点 truncated 标记。"
+            : "",
+          message.summary.truncated,
+        );
+      };
+    </script>
+  </body>
+</html>
