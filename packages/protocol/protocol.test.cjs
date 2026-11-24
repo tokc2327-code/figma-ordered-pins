@@ -73,3 +73,17 @@ test('add_pin 不带并发字段，回执是新建的 pin 本身', () => {
   assert.equal(isCommandResult({ commandId: 'req', ok: true, data: node }, 'add_pin'), false);
   assert.equal(isCommandResult({ commandId: 'req', ok: true, data: { ...pin, status: 'odd' } }, 'add_pin'), false);
 });
+
+test('audit_visual 是无版本读命令且校验范围、模式与注册表参数', () => {
+  const audit = { ...read, type: 'audit_visual', payload: {
+    scope: 'selection', mode: 'registry', maxDepth: 8, maxNodes: 300,
+    registryRef: { version: 'v1', url: 'https://example.test/registry' },
+    registry: { items: [{ id: 'button.submit' }] },
+  } };
+  assert.equal(isCommandEnvelope(audit), true);
+  assert.equal(isCommandEnvelope({ ...audit, pinId: 'p1', expectedVersion: 1 }), false);
+  assert.equal(isCommandEnvelope({ ...audit, payload: { scope: 'unknown' } }), false);
+  assert.equal(isCommandResult({ commandId: audit.commandId, ok: true, data: {
+    protocolVersion: '0.1', mode: 'generic', anchors: [], findings: [], summary: {},
+  } }, 'audit_visual'), true);
+});

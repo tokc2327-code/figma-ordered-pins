@@ -1,4 +1,4 @@
-const orderedPins = ((figma, protocol) => {
+const orderedPins = ((figma, protocol, v0Audit) => {
   const collectionKey = 'vc-ordered-pins';
   const pinKey = 'vc-comment-pin';
   const labelKey = 'vc-pin-label';
@@ -99,6 +99,109 @@ const orderedPins = ((figma, protocol) => {
       if (node.getPluginData(collectionKey) === '1') return true;
     }
     return false;
+  }
+
+  const semanticIdKey = 'vc-semantic-id';
+
+  function flattenComponentProperties(node) {
+    const props = {};
+    if (node.type !== 'INSTANCE') return props;
+    let rawProps;
+    try {
+      rawProps = node.componentProperties;
+    } catch {
+      return props;
+    }
+    if (!rawProps || typeof rawProps !== 'object') return props;
+    for (const [rawKey, entry] of Object.entries(rawProps)) {
+      if (!entry || entry.value === undefined) continue;
+      const cleanKey = rawKey.replace(/#\d+:\d+$/, '');
+      props[cleanKey] = entry.value;
+    }
+    return props;
+  }
+
+  async function collectAuditNodes(roots, maxDepth = 8, maxNodes = 300) {
+    const out = [];
+    const varNameCache = new Map();
+
+    function resolveVarName(varId) {
+      if (!varId || !figma.variables || typeof figma.variables.getVariableByIdAsync !== 'function') {
+        return Promise.resolve(null);
+      }
+      if (!varNameCache.has(varId)) {
+        const req = figma.variables.getVariableByIdAsync(varId)
+          .then((variable) => (variable && typeof variable.name === 'string' ? variable.name : null))
+          .catch(() => null);
+        varNameCache.set(varId, req);
+      }
+      return varNameCache.get(varId);
+    }
+
+    async function walk(node, depth, path, parentFillHex) {
+      if (!node || out.length >= maxNodes || depth > maxDepth || isAuxiliary(node)) return;
+      const nextPath = [...path, node.name];
+      const fill = firstSolid(node.fills);
+      const fillHex = fill ? colorHex(fill) : undefined;
+      const hasImageFill = Array.isArray(node.fills)
+        && node.fills.some((entry) => entry.type === 'IMAGE' && entry.visible !== false);
+      const boundFillAliases = Array.isArray(node.boundVariables?.fills) ? node.boundVariables.fills : [];
+      const boundStrokeAliases = Array.isArray(node.boundVariables?.strokes) ? node.boundVariables.strokes : [];
+      const fillVarIds = boundFillAliases.map((alias) => alias && alias.id).filter(Boolean);
+      const strokeVarIds = boundStrokeAliases.map((alias) => alias && alias.id).filter(Boolean);
+      const allVarIds = [...new Set([...fillVarIds, ...strokeVarIds])];
+      const resolvedNames = await Promise.all(allVarIds.map((id) => resolveVarName(id)));
+      const boundTokenNames = resolvedNames.filter(Boolean);
+
+      let mainComponent = null;
+      let detachedMainComponent = false;
+      if (node.type === 'INSTANCE' && typeof node.getMainComponentAsync === 'function') {
+        try {
+          const mc = await node.getMainComponentAsync();
+          if (mc) mainComponent = { id: mc.id, name: mc.name };
+          else detachedMainComponent = true;
+        } catch {
+          detachedMainComponent = true;
+        }
+      }
+
+      const textStyleId = node.type === 'TEXT' && node.textStyleId && node.textStyleId !== figma.mixed
+        ? node.textStyleId
+        : undefined;
+      const hasMissingFont = Boolean(node.hasMissingFont);
+      const semanticId = typeof node.getPluginData === 'function'
+        ? (node.getPluginData(semanticIdKey) || undefined)
+        : undefined;
+      let props = {};
+      if (node.type === 'TEXT') props = { text: node.characters };
+      else if (node.type === 'INSTANCE') props = flattenComponentProperties(node);
+
+      const children = Array.isArray(node.children) ? node.children : [];
+      const childSignature = children.length > 0
+        ? children.slice(0, 10).map((child) => child.type).join('>')
+        : undefined;
+      out.push({
+        id: node.id, name: node.name, type: node.type, depth, path: nextPath,
+        bounds: nodeBounds(node), childCount: children.length, childSignature,
+        fillHex, parentFillHex, hasImageFill,
+        boundVariables: allVarIds.length > 0 ? { fills: fillVarIds, strokes: strokeVarIds } : undefined,
+        hasFillVariable: fillVarIds.length > 0, boundTokenNames,
+        mainComponent, detachedMainComponent, textStyleId,
+        fontSize: node.type === 'TEXT' && typeof node.fontSize === 'number' ? node.fontSize : undefined,
+        hasMissingFont, layoutMode: node.layoutMode, layoutPositioning: node.layoutPositioning,
+        semanticId, props,
+      });
+      for (const child of children) {
+        if (out.length >= maxNodes) break;
+        await walk(child, depth + 1, nextPath, fillHex || parentFillHex);
+      }
+    }
+
+    for (const root of roots) {
+      if (out.length >= maxNodes) break;
+      await walk(root, 1, [], undefined);
+    }
+    return out;
   }
 
   function assertPage(page) {
@@ -261,6 +364,21 @@ const orderedPins = ((figma, protocol) => {
       const pin = await addPin(page, target, payload.instruction);
       const result = { commandId, ok: true, data: pin };
       if (!protocol.isCommandResult(result, type)) fail('WRITE_FAILED', '无法读取有效的新标注。');
+      return result;
+    }
+    if (type === 'audit_visual') {
+      const roots = payload.scope === 'page'
+        ? [page]
+        : (page.selection.length > 0 ? Array.from(page.selection) : [page]);
+      const rawNodes = await collectAuditNodes(roots, payload.maxDepth ?? 8, payload.maxNodes ?? 300);
+      assertPage(page);
+      const data = v0Audit.runAudit({
+        source: 'figma', anchors: rawNodes,
+        mode: payload.mode || (payload.registry ? 'registry' : 'generic'),
+        observedAt: new Date().toISOString(), registryRef: payload.registryRef, registry: payload.registry,
+      });
+      const result = { commandId, ok: true, data };
+      if (!protocol.isCommandResult(result, type)) fail('WRITE_FAILED', '无法生成有效的视觉审计报告。');
       return result;
     }
     const entry = pagePins(page).find(({ pin }) => pin.pinId === pinId);
@@ -457,4 +575,4 @@ const orderedPins = ((figma, protocol) => {
       });
     },
   };
-})(figma, pinProtocol);
+})(figma, pinProtocol, v0Audit);

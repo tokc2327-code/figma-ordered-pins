@@ -18,6 +18,7 @@ const array = (items) => ({ type: 'array', items });
 const object = (properties, required = [], extra = {}) => ({
   type: 'object', properties, required, additionalProperties: false, ...extra,
 });
+const jsonObject = object({}, [], { additionalProperties: true });
 const padding = { top: nonnegative, right: nonnegative, bottom: nonnegative, left: nonnegative };
 const bounds = object({ x: number, y: number, width: nonnegative, height: nonnegative },
   ['x', 'y', 'width', 'height']);
@@ -55,12 +56,18 @@ const payloadSchemas = {
   update_pin_status: object({ pinId: id, status, note: string }, ['pinId', 'status']),
   // add_pin 只带指令(可选指定目标图层,不给就用当前选区),没有既有的 pinId / expectedVersion。
   add_pin: object({ instruction: id, nodeId: id }, ['instruction']),
+  audit_visual: object({
+    scope: { enum: ['selection', 'page'] }, mode: { enum: ['generic', 'registry'] },
+    maxDepth: { type: 'integer', minimum: 0 }, maxNodes: { type: 'integer', minimum: 1 },
+    registryRef: object({ version: string, url: string }), registry: jsonObject,
+  }),
 };
 const commandTypes = Object.keys(payloadSchemas);
 // 这两条命令不是修改既有标注,所以信封里不带 pinId / expectedVersion,回执也不带 newVersion。
-const versionlessTypes = ['get_ordered_pins', 'add_pin'];
+const versionlessTypes = ['get_ordered_pins', 'add_pin', 'audit_visual'];
 const resultSchemas = {
   add_pin: pinSchema,
+  audit_visual: jsonObject,
   get_ordered_pins: array(object({
     pin: pinSchema, context: nodeSchema, orphaned: { const: true },
   }, ['pin'])),
@@ -81,8 +88,9 @@ function matches(value, schema) {
       const keys = Object.keys(value);
       return keys.length >= (schema.minProperties ?? 0)
         && schema.required.every((key) => Object.prototype.hasOwnProperty.call(value, key))
-        && keys.every((key) => Object.prototype.hasOwnProperty.call(schema.properties, key)
-          && matches(value[key], schema.properties[key]));
+        && keys.every((key) => schema.additionalProperties === true
+          || (Object.prototype.hasOwnProperty.call(schema.properties, key)
+            && matches(value[key], schema.properties[key])));
     }
     case 'array':
       return Array.isArray(value) && Array.from(value).every((item) => matches(item, schema.items));
@@ -95,6 +103,7 @@ function matches(value, schema) {
         && value >= (schema.minimum ?? -Infinity) && value <= (schema.maximum ?? Infinity)
         && value > (schema.exclusiveMinimum ?? -Infinity);
     default:
+      if (schema.type === undefined) return true;
       return typeof value === schema.type;
   }
 }

@@ -4,5 +4,5 @@
   "private": true,
   "main": "index.cjs",
   "types": "index.d.cts",
-  "scripts": { "test": "node --test protocol.test.cjs" }
+  "scripts": { "test": "node --test protocol.test.cjs v0-audit.test.cjs" }
 }
