@@ -1,5 +1,5 @@
 {
-  "name": "Visual collaboration 图层读取（开发）",
+  "name": "Figma Ordered Pins",
   "id": "visual-collaboration-layer-reader-v1",
   "api": "1.0.0",
   "main": "dist/code.js",
