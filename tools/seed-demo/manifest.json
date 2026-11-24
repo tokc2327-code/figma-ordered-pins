@@ -1,0 +1,8 @@
+{
+  "name": "VC Seed Demo Draft (dev)",
+  "id": "vc-seed-demo-draft-2026-11-24",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page"
+}

@@ -26,10 +26,20 @@ const orderedPins = ((figma, protocol, v0Audit) => {
       Math.round(entry.color[channel] * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
   }
 
+  // PAGE / SECTION have neither absoluteBoundingBox nor absoluteTransform, so indexing
+  // the transform throws. Fall back step by step instead of reading [0][2] blindly.
   function nodeBounds(node) {
     const box = node.absoluteBoundingBox;
-    return box ? { x: box.x, y: box.y, width: box.width, height: box.height }
-      : { x: node.absoluteTransform[0][2], y: node.absoluteTransform[1][2], width: node.width, height: node.height };
+    if (box) return { x: box.x, y: box.y, width: box.width, height: box.height };
+    const transform = node.absoluteTransform;
+    if (Array.isArray(transform) && Array.isArray(transform[0]) && Array.isArray(transform[1])) {
+      return { x: transform[0][2], y: transform[1][2], width: node.width, height: node.height };
+    }
+    return {
+      x: 0, y: 0,
+      width: typeof node.width === "number" ? node.width : 0,
+      height: typeof node.height === "number" ? node.height : 0,
+    };
   }
 
   function snapshot(node) {
@@ -102,6 +112,8 @@ const orderedPins = ((figma, protocol, v0Audit) => {
   }
 
   const semanticIdKey = 'vc-semantic-id';
+  // sharedPluginData 的命名空间：别的插件写的规格值只有走这个才读得到
+  const semanticNamespace = 'vc_semantic';
 
   function flattenComponentProperties(node) {
     const props = {};
@@ -169,18 +181,44 @@ const orderedPins = ((figma, protocol, v0Audit) => {
         ? node.textStyleId
         : undefined;
       const hasMissingFont = Boolean(node.hasMissingFont);
-      const semanticId = typeof node.getPluginData === 'function'
-        ? (node.getPluginData(semanticIdKey) || undefined)
-        : undefined;
+      const readSemantic = (key) => {
+        try {
+          if (typeof node.getSharedPluginData === 'function') {
+            const shared = node.getSharedPluginData(semanticNamespace, key);
+            if (shared) return shared;
+          }
+          if (typeof node.getPluginData === 'function') {
+            return node.getPluginData(key === 'semantic-id' ? semanticIdKey : 'vc-' + key) || '';
+          }
+        } catch {
+          // 取不到就按没有处理
+        }
+        return '';
+      };
+      const semanticId = readSemantic('semantic-id') || undefined;
       let props = {};
       if (node.type === 'TEXT') props = { text: node.characters };
       else if (node.type === 'INSTANCE') props = flattenComponentProperties(node);
+      // 规格属性也可以直接挂在节点的 vc-semantic-props 上（JSON），
+      // 这样 FRAME / COMPONENT 这类拿不到 componentProperties 的 L1 也能带 props。
+      const rawSemanticProps = readSemantic('semantic-props');
+      if (rawSemanticProps) {
+        try {
+          const parsed = JSON.parse(rawSemanticProps);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            props = { ...props, ...parsed };
+          }
+        } catch {
+          // 坏的 JSON 不阻断审计，按没有声明 props 处理
+        }
+      }
 
       const children = Array.isArray(node.children) ? node.children : [];
       const childSignature = children.length > 0
         ? children.slice(0, 10).map((child) => child.type).join('>')
         : undefined;
-      out.push({
+      const containerOnly = node.type === "PAGE" || node.type === "SECTION";
+      if (!containerOnly) out.push({
         id: node.id, name: node.name, type: node.type, depth, path: nextPath,
         bounds: nodeBounds(node), childCount: children.length, childSignature,
         fillHex, parentFillHex, hasImageFill,

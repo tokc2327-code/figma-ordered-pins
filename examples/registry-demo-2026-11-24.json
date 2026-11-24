@@ -1,0 +1,63 @@
+{
+  "version": "2026-11-24.1",
+  "allowedKinds": ["Screen", "Header", "Button", "Card", "Row"],
+  "tokens": [
+    "color/surface/base",
+    "color/surface/raised",
+    "color/text/primary",
+    "color/text/muted",
+    "color/brand/primary",
+    "color/on-brand"
+  ],
+  "items": [
+    {
+      "id": "screen/home",
+      "schema": {
+        "kind": "Screen",
+        "props": {
+          "title": { "type": "string", "required": true },
+          "route": { "type": "string", "required": true }
+        }
+      }
+    },
+    {
+      "id": "layout/header",
+      "schema": {
+        "kind": "Header",
+        "props": {
+          "title": { "type": "string", "required": true }
+        }
+      }
+    },
+    {
+      "id": "button/primary",
+      "schema": {
+        "kind": "Button",
+        "props": {
+          "label": { "type": "string", "required": true },
+          "tone": { "type": "enum", "enumValues": ["solid", "outline"], "required": true }
+        }
+      }
+    },
+    {
+      "id": "card/stat",
+      "schema": {
+        "kind": "Card",
+        "props": {
+          "label": { "type": "string", "required": true },
+          "value": { "type": "string", "required": true }
+        }
+      }
+    },
+    {
+      "id": "row/task",
+      "schema": {
+        "kind": "Row",
+        "props": {
+          "title": { "type": "string", "required": true },
+          "status": { "type": "enum", "enumValues": ["pending", "in_progress", "done"], "required": true }
+        }
+      }
+    }
+  ]
+}
