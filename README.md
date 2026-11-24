@@ -2,7 +2,7 @@
 
 # figma-ordered-pins
 
-**0.1.0** · [中文桌面验收](README.zh-CN.md)
+**0.1.0** · [中文](README.zh-CN.md)
 
 **Drop numbered pins on Figma layers so an AI agent can read scoped context, edit the canvas in order, and verify every change.**
 
@@ -131,7 +131,7 @@ Configure your MCP client to spawn `node` with the absolute path to `packages/mc
   "mcpServers": {
     "figma-ordered-pins": {
       "command": "node",
-      "args": ["D:/figma-ordered-pins/packages/mcp-bridge/index.cjs"]
+      "args": ["<your-checkout>/packages/mcp-bridge/index.cjs"]
     }
   }
 }
@@ -152,7 +152,7 @@ Pass it to the server via the `VC_FIGMA_BRIDGE_TOKEN` environment variable and p
   "mcpServers": {
     "figma-ordered-pins": {
       "command": "node",
-      "args": ["D:/figma-ordered-pins/packages/mcp-bridge/index.cjs"],
+      "args": ["<your-checkout>/packages/mcp-bridge/index.cjs"],
       "env": {
         "VC_FIGMA_BRIDGE_TOKEN": "<64-lowercase-hex-token>"
       }
@@ -198,12 +198,12 @@ Each successful write increments `version` and returns `newVersion`; pass that v
 
 ## Running the acceptance
 
-The 55 automated tests run against a mock Figma runtime, a mock plugin panel, and real loopback WebSocket + MCP stdio connections. Use this desktop acceptance checklist (also in [README.zh-CN.md](README.zh-CN.md)) to verify live Figma Desktop connectivity, canvas rendering, error guards, Undo behavior, and recording.
+The 55 automated tests run against a mock Figma runtime, a mock plugin panel, and real loopback WebSocket + MCP stdio connections. Use this desktop acceptance checklist (the Chinese README mirrors it in [README.zh-CN.md](README.zh-CN.md)) to verify live Figma Desktop connectivity, canvas rendering, error guards, Undo behavior, and recording.
 
 ### Step 1 — Build locally and place three ordered pins
 
 1. From the repository root, run `npm ci`, `npm test`, and `npm run build`.
-2. In an editable Figma Desktop test file, import `packages/plugin/manifest.json` (for example `D:\figma-ordered-pins\packages\plugin\manifest.json`) via the Development plugins menu and launch **Figma Ordered Pins**.
+2. In an editable Figma Desktop test file, import `packages/plugin/manifest.json` via the Development plugins menu and launch **Figma Ordered Pins**.
 3. On the same page, select in order:
    - a **heading** layer,
    - a **button** layer, and
@@ -213,7 +213,7 @@ The 55 automated tests run against a mock Figma runtime, a mock plugin panel, an
 
 ### Step 2 — Connect the MCP bridge and read the queue
 
-1. Add the stdio server to your MCP client with command `node` and the single argument `packages/mcp-bridge/index.cjs` (for example `D:\figma-ordered-pins\packages\mcp-bridge\index.cjs`).
+1. Add the stdio server to your MCP client with command `node` and the single argument `packages/mcp-bridge/index.cjs` (absolute path of your checkout).
 2. Copy the bridge token from the startup log on `stderr` into the plugin panel and click **Connect** (`连接`). If the client hides `stderr`, set `VC_FIGMA_BRIDGE_TOKEN` in the server environment to a random 64-character lowercase hex token and enter the same token in the panel.
 3. Ask the agent to call `get_ordered_pins`.
 4. **Confirm:** All three pins return in `#1 → #2 → #3` order, with accurate target node IDs, text content, and Auto Layout context.
