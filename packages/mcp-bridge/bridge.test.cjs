@@ -83,7 +83,10 @@ test('real MCP stdio client lists seven tools and receives plugin readback throu
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ['-e', 'require(' + JSON.stringify(entry) + ').run({port:0}).catch(() => process.exit(1))'],
-    env: { VC_FIGMA_BRIDGE_TOKEN: token },
+    // 继承当前环境再叠 token:SDK 传了 env 就整份替换,只剩 token 会丢掉 PATH、
+    // 以及 Electron 二进制当 node 用时必需的 ELECTRON_RUN_AS_NODE → 子进程起来就退,
+    // client.connect 报 "Connection closed"。这里要验的是「token 走环境变量」,不是「环境是空的」。
+    env: { ...process.env, VC_FIGMA_BRIDGE_TOKEN: token },
     stderr: 'pipe',
   });
   const client = new Client({ name: 'bridge-test', version: '1.0.0' });
